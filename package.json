@@ -1,0 +1,13 @@
+{
+  "name": "tab-to-todoist",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "web-ext run",
+    "lint": "web-ext lint",
+    "build": "web-ext build --overwrite-dest"
+  },
+  "devDependencies": {
+    "web-ext": "10.7.0"
+  }
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tab to Todoist Preferences</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <form id="settings-form">
+        <div class="form-field">
+          <div class="field-heading">
+            <label for="api-token">API token (required)</label>
+            <span class="help-wrap">
+              <button
+                class="help"
+                type="button"
+                aria-label="API token help"
+                aria-controls="api-token-help"
+              >?</button>
+              <span id="api-token-help" class="help-text" role="tooltip">
+                In Todoist: Settings &gt; Integrations &gt; Developer. Stored only in this browser and sent only to Todoist.
+              </span>
+            </span>
+          </div>
+          <span class="token-input">
+            <input id="api-token" name="apiToken" type="password" autocomplete="off">
+            <button id="toggle-token-visibility" type="button" aria-controls="api-token" aria-pressed="false">Show</button>
+            <button id="clear-token" type="button">Clear</button>
+          </span>
+        </div>
+
+        <div class="form-field">
+          <div class="field-heading">
+            <label for="project">Project</label>
+            <span class="help-wrap">
+              <button
+                class="help"
+                type="button"
+                aria-label="Project help"
+                aria-controls="project-help"
+              >?</button>
+              <span id="project-help" class="help-text" role="tooltip"></span>
+            </span>
+          </div>
+          <input id="project" name="project" type="text" autocomplete="off">
+        </div>
+
+        <div class="form-field">
+          <div class="field-heading">
+            <label for="label">Labels</label>
+            <span class="help-wrap">
+              <button
+                class="help"
+                type="button"
+                aria-label="Labels help"
+                aria-controls="label-help"
+              >?</button>
+              <span id="label-help" class="help-text" role="tooltip"></span>
+            </span>
+          </div>
+          <input id="label" name="label" type="text" autocomplete="off" placeholder="e.g., read-later, web">
+        </div>
+
+        <div class="checkbox-row">
+          <label class="checkbox">
+            <input id="use-quick-add" name="useQuickAdd" type="checkbox">
+            <span>Use Todoist Quick Add parsing</span>
+          </label>
+          <span class="help-wrap">
+            <button
+              class="help"
+              type="button"
+              aria-label="Quick Add help"
+              aria-controls="quick-add-help"
+            >?</button>
+            <span id="quick-add-help" class="help-text" role="tooltip">
+              Send the task as text for Todoist to parse, like typing in Quick Add. Words in page titles such as "tomorrow" or "p1" may become a due date or priority.
+            </span>
+          </span>
+        </div>
+
+        <div class="checkbox-row">
+          <label class="checkbox">
+            <input id="show-context-menu" name="showContextMenu" type="checkbox">
+            <span>Show in context menus</span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <button id="reset-settings" type="button">Reset</button>
+        </div>
+
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

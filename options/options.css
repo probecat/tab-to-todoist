@@ -1,0 +1,153 @@
+:root {
+  color-scheme: light dark;
+  font: menu;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 480px;
+  padding: 18px;
+}
+
+form {
+  display: grid;
+  gap: 14px;
+}
+
+.form-field {
+  display: grid;
+  gap: 6px;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.field-heading {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+input[type="password"],
+input[type="text"] {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+
+.token-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox {
+  gap: 8px;
+}
+
+.checkbox > span {
+  font-weight: 400;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+button {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background: ButtonFace;
+  color: ButtonText;
+  font: inherit;
+}
+
+button:hover {
+  background: color-mix(in srgb, ButtonFace 88%, Highlight);
+}
+
+.help {
+  min-height: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: GrayText;
+  font: inherit;
+  line-height: 1;
+}
+
+.help:hover,
+.help:focus-visible {
+  background: transparent;
+  color: ButtonText;
+}
+
+.help-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-text {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 6px);
+  left: 0;
+  box-sizing: border-box;
+  display: none;
+  width: min(280px, calc(100vw - 36px));
+  padding: 8px 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background: Field;
+  color: FieldText;
+  font-weight: 400;
+  line-height: 1.35;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+}
+
+.help:focus-visible + .help-text,
+.help-wrap:hover .help-text {
+  display: block;
+}
+
+#status {
+  min-height: 1.4em;
+  margin: 0;
+  color: GrayText;
+}
+
+#status[data-tone="success"] {
+  color: light-dark(#15803d, #4ade80);
+}
+
+#status[data-tone="warning"] {
+  color: light-dark(#b45309, #fbbf24);
+}

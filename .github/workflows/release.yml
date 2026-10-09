@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HAS_AMO_KEYS: ${{ secrets.AMO_JWT_ISSUER != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Check tag matches manifest version
+        run: |
+          version=$(node -p 'require("./manifest.json").version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match manifest version $version"
+            exit 1
+          fi
+
+      - run: npm run lint -- --warnings-as-errors
+      - run: npm run build
+
+      - name: Check package contents
+        run: |
+          unzip -Z1 web-ext-artifacts/*.zip
+          if unzip -Z1 web-ext-artifacts/*.zip | grep -q mock; then
+            echo "::error::Package contains the mock"
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" web-ext-artifacts/*.zip \
+            --title "$GITHUB_REF_NAME" \
+            --notes "The .zip is the unsigned build, as submitted to AMO. Install from Firefox Add-ons, or use the signed .xpi once attached."
+
+      - name: Submit to AMO and wait for signing
+        if: env.HAS_AMO_KEYS == 'true'
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: npx web-ext sign --channel listed --artifacts-dir signed --approval-timeout 1800000
+
+      - name: Attach signed XPI
+        if: hashFiles('signed/*.xpi') != ''
+        run: gh release upload "$GITHUB_REF_NAME" signed/*.xpi
