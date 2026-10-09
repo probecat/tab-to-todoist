@@ -4,22 +4,22 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HAS_AMO_KEYS: ${{ secrets.AMO_JWT_ISSUER != '' }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
 
       - name: Check tag matches manifest version
         run: |
@@ -40,19 +40,77 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned
+          path: web-ext-artifacts/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned
+          path: unsigned
+
       - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" web-ext-artifacts/*.zip \
+          gh release create "$GITHUB_REF_NAME" unsigned/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --notes "The .zip is the unsigned build, as submitted to AMO. Install from Firefox Add-ons, or use the signed .xpi once attached."
+
+  sign:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: amo
+    permissions:
+      contents: read
+    env:
+      HAS_AMO_KEYS: ${{ secrets.AMO_JWT_ISSUER != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
 
       - name: Submit to AMO and wait for signing
         if: env.HAS_AMO_KEYS == 'true'
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-        run: npx web-ext sign --channel listed --artifacts-dir signed --approval-timeout 1800000
+        run: npx --no-install web-ext sign --channel listed --artifacts-dir signed --approval-timeout 1800000
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed
+          path: signed/*.xpi
+          if-no-files-found: ignore
+
+  attach:
+    needs: sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed
+          path: signed
+        continue-on-error: true
 
       - name: Attach signed XPI
         if: hashFiles('signed/*.xpi') != ''
-        run: gh release upload "$GITHUB_REF_NAME" signed/*.xpi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" signed/*.xpi --repo "$GITHUB_REPOSITORY"
