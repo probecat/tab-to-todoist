@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Same paths-ignore as .github/workflows/ci.yml
+git diff --cached --name-only | grep -qvE '\.md$|^LICENSE$|^docs/' || exit 0
+
+# Lint the staged tree, not the working tree
+repo=$(git rev-parse --show-toplevel)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+git checkout-index -a --prefix="$tmp/"
+ln -s "$repo/node_modules" "$tmp/node_modules"
+cd "$tmp"
+npm run check
