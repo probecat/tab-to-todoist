@@ -3,12 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: &docs
+    paths-ignore:
       - "**.md"
       - LICENSE
       - docs/**
   pull_request:
-    paths-ignore: *docs
 
 permissions:
   contents: read
