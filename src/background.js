@@ -4,6 +4,7 @@ const TAB_MENU_ID = "add-tab";
 const OPTIONS_MENU_ID = "options";
 const TODOIST_TASKS_URL = "https://api.todoist.com/api/v1/tasks";
 const TODOIST_QUICK_ADD_URL = "https://api.todoist.com/api/v1/tasks/quick";
+const TODOIST_USER_URL = "https://api.todoist.com/api/v1/user";
 const TODOIST_REQUEST_TIMEOUT_MS = 5000;
 const BADGE_RESET_MS = 1000;
 const SUCCESS_BADGE_COLOR = "#058527";
@@ -26,6 +27,11 @@ const PENDING_ICON_PATHS = {
 };
 
 let badgeResetTimer;
+let lastMenuInstanceId = 0;
+let nextMenuInstanceId = 1;
+let pendingCount = 0;
+let pendingBatchFailed = false;
+const inFlightUrls = new Set();
 let mock;
 const mockReady = loadMock();
 
@@ -44,21 +50,21 @@ browser.runtime.onInstalled.addListener(async (details) => {
 
   browser.contextMenus.create({
     id: PAGE_MENU_ID,
-    title: "Add page to Todoist",
+    title: "Add Page to Todoist",
     contexts: ["page"],
     visible: settings.showContextMenu
   });
 
   browser.contextMenus.create({
     id: LINK_MENU_ID,
-    title: "Add link to Todoist",
+    title: "Add Link to Todoist",
     contexts: ["link"],
     visible: settings.showContextMenu
   });
 
   browser.contextMenus.create({
     id: TAB_MENU_ID,
-    title: "Add tab to Todoist",
+    title: "Add Tab to Todoist",
     contexts: ["tab"],
     visible: settings.showContextMenu
   });
@@ -101,31 +107,128 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
+  if (
+    [PAGE_MENU_ID, LINK_MENU_ID].includes(info.menuItemId) &&
+    isTodoistUrl(tab?.url || info.pageUrl)
+  ) {
+    return;
+  }
+
   let target;
   if (info.menuItemId === LINK_MENU_ID) {
     target = { title: info.linkText, url: info.linkUrl };
   } else if (info.menuItemId === PAGE_MENU_ID) {
     target = { title: tab?.title, url: info.pageUrl || tab?.url };
   } else if (info.menuItemId === TAB_MENU_ID) {
-    target = { title: tab?.title, url: tab?.url };
+    const tabs = await getTargetTabs(tab);
+    if (tabs.length) {
+      addToTodoist(tabs.map((selected) => toSite(selected.title, selected.url)));
+    }
+    return;
   } else {
     return;
   }
 
-  addToTodoist({
-    title: getTitle(target.title, target.url),
-    url: target.url
-  });
+  addToTodoist([toSite(target.title, target.url)]);
+});
+
+// The menu may close or reopen while getTargetTabs is pending.
+browser.contextMenus.onShown.addListener(async (info, tab) => {
+  const menuInstanceId = nextMenuInstanceId++;
+  lastMenuInstanceId = menuInstanceId;
+
+  const enabled = !isTodoistUrl(tab?.url || info.pageUrl);
+  for (const menuId of [PAGE_MENU_ID, LINK_MENU_ID]) {
+    if (info.menuIds.includes(menuId)) {
+      browser.contextMenus.update(menuId, { enabled });
+    }
+  }
+  browser.contextMenus.refresh();
+
+  if (info.menuIds.includes(TAB_MENU_ID)) {
+    const count = (await getTargetTabs(tab)).length;
+    if (menuInstanceId !== lastMenuInstanceId) {
+      return;
+    }
+
+    browser.contextMenus.update(TAB_MENU_ID, {
+      title: count > 1 ? `Add ${count} Tabs to Todoist` : "Add Tab to Todoist",
+      enabled: count > 0
+    });
+    browser.contextMenus.refresh();
+  }
+});
+
+browser.contextMenus.onHidden.addListener(() => {
+  lastMenuInstanceId = 0;
+});
+
+browser.runtime.onMessage.addListener((message) => {
+  if (message?.type === "testConnection") {
+    return testConnection(String(message.apiToken || "").trim());
+  }
 });
 
 browser.action.onClicked.addListener((tab) => {
-  addToTodoist({
-    title: getTitle(tab?.title, tab?.url),
-    url: tab?.url
-  });
+  addToTodoist([toSite(tab?.title, tab?.url)]);
 });
 
-async function addToTodoist(site) {
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  updateActionState(tabId, changeInfo.url);
+}, { properties: ["url"] });
+
+// Re-enabling the add-on fires neither onStartup nor onInstalled.
+browser.tabs.query({}).then((tabs) => {
+  for (const tab of tabs) {
+    updateActionState(tab.id, tab.url);
+  }
+});
+
+function updateActionState(tabId, url) {
+  return isTodoistUrl(url) ? browser.action.disable(tabId) : browser.action.enable(tabId);
+}
+
+// Like Firefox's own tab menu, a tab outside the selection acts alone.
+async function getTargetTabs(tab) {
+  const selected = tab?.highlighted
+    ? await browser.tabs.query({ windowId: tab.windowId, highlighted: true })
+    : [tab].filter(Boolean);
+
+  const seen = new Set();
+  return selected.filter(({ url }) => {
+    if (isTodoistUrl(url) || seen.has(url)) {
+      return false;
+    }
+    seen.add(url);
+    return true;
+  });
+}
+
+function toSite(title, url) {
+  return { title: getTitle(title, url), url };
+}
+
+// Claimed before any await so repeated clicks cannot create duplicates.
+async function addToTodoist(sites) {
+  const claimed = sites.filter((site) => !inFlightUrls.has(site.url));
+  if (!claimed.length) {
+    return;
+  }
+
+  for (const site of claimed) {
+    inFlightUrls.add(site.url);
+  }
+
+  try {
+    await submitSites(claimed);
+  } finally {
+    for (const site of claimed) {
+      inFlightUrls.delete(site.url);
+    }
+  }
+}
+
+async function submitSites(sites) {
   const settings = await getSettings();
 
   if (!settings.apiToken && !(await isMockActive())) {
@@ -133,21 +236,57 @@ async function addToTodoist(site) {
     return;
   }
 
-  if (!isUsableUrl(site.url)) {
-    await notify("Todoist", "This page does not have a usable URL.");
-    await showResult(false);
-    return;
+  await beginPending();
+
+  let ok = false;
+  try {
+    ok = await sendSites(settings, sites);
+  } finally {
+    await endPending(ok);
+  }
+}
+
+async function sendSites(settings, sites) {
+  const usableSites = sites.filter((site) => isUsableUrl(site.url));
+  const skipped = sites.length - usableSites.length;
+
+  if (!usableSites.length) {
+    await notify("Not added", sites.length > 1
+      ? "None of the selected tabs have a usable URL."
+      : "This page does not have a usable URL.");
+    return false;
   }
 
-  await showPendingIcon();
+  const results = await Promise.allSettled(
+    usableSites.map((site) => createTodoistTask(settings, site))
+  );
+  const failures = results.filter((result) => result.status === "rejected");
 
-  try {
-    await createTodoistTask(settings, site);
-    await showResult(true);
-  } catch (error) {
+  if (failures.length) {
+    const error = failures[0].reason;
     const message = error instanceof Error ? error.message : "Could not add the task.";
-    await notify("Todoist error", message);
-    await showResult(false);
+    const partly = skipped || failures.length < usableSites.length;
+    await notify(partly ? "Partly added" : "Not added", sites.length > 1
+      ? `${failures.length} of ${usableSites.length} tasks failed. ${message}`
+      : message);
+  } else if (skipped) {
+    await notify("Partly added", `Skipped ${skipped} ${skipped === 1 ? "tab" : "tabs"} without a usable URL.`);
+  }
+
+  return !failures.length && !skipped;
+}
+
+function beginPending() {
+  if (pendingCount++ === 0) {
+    pendingBatchFailed = false;
+  }
+  return showPendingIcon();
+}
+
+function endPending(ok) {
+  pendingBatchFailed ||= !ok;
+  if (--pendingCount === 0) {
+    return showResult(!pendingBatchFailed);
   }
 }
 
@@ -189,6 +328,22 @@ async function getSettings() {
 async function hasConfiguredApiToken() {
   const stored = await browser.storage.local.get("apiToken");
   return Boolean(String(stored.apiToken || "").trim());
+}
+
+async function testConnection(apiToken) {
+  try {
+    const response = await fetchTodoist(TODOIST_USER_URL, {
+      headers: buildTodoistHeaders(apiToken)
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    return { ok: false, message: await formatTodoistError(response, "api.todoist.com returned an error.") };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not reach api.todoist.com." };
+  }
 }
 
 async function createTodoistTask(settings, site) {
@@ -256,11 +411,11 @@ async function fetchTodoist(url, options) {
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Todoist did not respond. Try again.");
+      throw new Error("No response received. Try again.");
     }
 
     if (error instanceof TypeError) {
-      throw new Error("Could not reach Todoist. Check your connection.");
+      throw new Error("Could not reach api.todoist.com.");
     }
 
     throw error;
@@ -292,19 +447,19 @@ function buildTodoistHeaders(apiToken) {
   };
 }
 
-async function formatTodoistError(response) {
+async function formatTodoistError(response, fallbackMessage = "Could not add the task.") {
   const { details, argument } = await readTodoistError(response);
   const status = `HTTP ${response.status}`;
 
   if (response.status === 401 || response.status === 403) {
-    return appendDetails("Todoist rejected the API token. Check the token in preferences.", status, details);
+    return appendDetails("api.todoist.com rejected the API token.", status, details);
   }
 
   if (argument === "project_id") {
-    return appendDetails("Todoist did not accept the project ID. Check it in preferences.", status, details);
+    return appendDetails("api.todoist.com rejected the project ID.", status, details);
   }
 
-  return appendDetails("Todoist could not add the task.", status, details);
+  return appendDetails(fallbackMessage, status, details);
 }
 
 function appendDetails(message, status, details) {
@@ -343,6 +498,14 @@ function getTitle(title, url) {
     return new URL(url).hostname;
   } catch (_error) {
     return "Untitled page";
+  }
+}
+
+function isTodoistUrl(url) {
+  try {
+    return new URL(url).hostname === "app.todoist.com";
+  } catch (_error) {
+    return false;
   }
 }
 

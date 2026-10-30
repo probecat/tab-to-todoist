@@ -8,7 +8,8 @@
     "activeTab",
     "contextMenus",
     "notifications",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://api.todoist.com/*"
