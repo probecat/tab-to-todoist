@@ -8,12 +8,6 @@ A Firefox add-on that adds the current tab to Todoist as a link task.
 
 See [Releases](https://github.com/probecat/tab-to-todoist/releases) for additional signed builds.
 
-## Screenshots
-
-![Right-click menu with "Add page to Todoist", and the toolbar button showing OK after adding](docs/screenshots/hero.png)
-
-![Added pages as link tasks in Todoist, and the add-on's preferences](docs/screenshots/result-and-preferences.png)
-
 ## Contributing
 
 This add-on is considered feature complete. Bug reports and fixes are welcome. A Chromium port may be considered on request; please open an issue.
