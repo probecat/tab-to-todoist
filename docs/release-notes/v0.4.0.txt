@@ -1,0 +1,4 @@
+- New: add several tabs at once. This requires approving the tabs permission.
+- Fix: handle rapid clicks without adding duplicate tasks.
+- The add-on is disabled on the Todoist web app.
+- Preferences has a Test button to check your API token.
