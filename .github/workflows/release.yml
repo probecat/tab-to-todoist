@@ -29,6 +29,13 @@ jobs:
             exit 1
           fi
 
+      - name: Check release notes exist
+        run: |
+          if [ ! -s "docs/release-notes/$GITHUB_REF_NAME.txt" ]; then
+            echo "::error::Missing docs/release-notes/$GITHUB_REF_NAME.txt"
+            exit 1
+          fi
+
       - run: npm run check
       - run: npm run build
 
@@ -52,6 +59,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: docs/release-notes
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: unsigned
@@ -64,7 +75,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" unsigned/*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "The .zip is the unsigned build, as submitted to AMO. Install from Firefox Add-ons, or use the signed .xpi once attached."
+            --notes "$(cat "docs/release-notes/$GITHUB_REF_NAME.txt")
+
+          The .zip is the unsigned build, as submitted to AMO. Install from Firefox Add-ons, or use the signed .xpi once attached."
 
   sign:
     needs: release
@@ -89,7 +102,11 @@ jobs:
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-        run: npx --no-install web-ext sign --channel listed --artifacts-dir signed --approval-timeout 1800000
+        # Metadata goes in RUNNER_TEMP so web-ext doesn't package it
+        run: |
+          jq -n --rawfile notes "docs/release-notes/$GITHUB_REF_NAME.txt" \
+            '{version: {release_notes: {"en-US": ($notes | trim)}}}' > "$RUNNER_TEMP/amo-metadata.json"
+          npx --no-install web-ext sign --channel listed --artifacts-dir signed --approval-timeout 1800000 --amo-metadata "$RUNNER_TEMP/amo-metadata.json"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
