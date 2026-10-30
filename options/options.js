@@ -29,6 +29,7 @@ const labelInput = document.querySelector("#label");
 const useQuickAddInput = document.querySelector("#use-quick-add");
 const showContextMenuInput = document.querySelector("#show-context-menu");
 const clearTokenButton = document.querySelector("#clear-token");
+const testTokenButton = document.querySelector("#test-token");
 const resetSettingsButton = document.querySelector("#reset-settings");
 const toggleTokenVisibilityButton = document.querySelector("#toggle-token-visibility");
 const statusText = document.querySelector("#status");
@@ -59,6 +60,32 @@ clearTokenButton.addEventListener("click", () => {
   apiTokenInput.value = "";
   apiTokenInput.focus();
   updateUnsavedNotice();
+});
+
+testTokenButton.addEventListener("click", async () => {
+  const apiToken = apiTokenInput.value.trim();
+  if (!apiToken) {
+    setStatus("Enter an API token to test.", "error");
+    apiTokenInput.focus();
+    return;
+  }
+
+  testTokenButton.disabled = true;
+  setStatus("Testing connection…");
+
+  try {
+    const result = await browser.runtime.sendMessage({ type: "testConnection", apiToken });
+    if (result?.ok) {
+      const unsaved = apiToken !== savedValues.apiToken;
+      setStatus(unsaved ? "Connected. Save to use this token." : "Connected. The API token works.", "success");
+    } else {
+      setStatus(result?.message || "Could not test the connection.", "error");
+    }
+  } catch (_error) {
+    setStatus("Could not test the connection.", "error");
+  } finally {
+    testTokenButton.disabled = false;
+  }
 });
 
 resetSettingsButton.addEventListener("click", async () => {

@@ -92,6 +92,11 @@ button:hover {
   background: color-mix(in srgb, ButtonFace 88%, Highlight);
 }
 
+button:disabled {
+  background: ButtonFace;
+  color: GrayText;
+}
+
 .help {
   min-height: 0;
   padding: 0 2px;
@@ -150,4 +155,8 @@ button:hover {
 
 #status[data-tone="warning"] {
   color: light-dark(#b45309, #fbbf24);
+}
+
+#status[data-tone="error"] {
+  color: light-dark(#b91c1c, #f87171);
 }
