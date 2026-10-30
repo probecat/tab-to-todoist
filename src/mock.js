@@ -4,6 +4,17 @@ const MENU_PREFIX = "mock-";
 const PARENT_MENU_ID = "mock";
 const STORAGE_KEY = "mockScenario";
 
+const RATE_LIMITED = {
+  status: 429,
+  body: {
+    error: "Too many requests",
+    error_code: 429,
+    error_extra: { retry_after: 15 },
+    error_tag: "TOO_MANY_REQUESTS",
+    http_code: 429
+  }
+};
+
 const SCENARIOS = {
   off: { title: "Off (real Todoist API)" },
   success: { title: "Success", delayMs: 500, status: 200, body: { id: "mock-task" } },
@@ -26,12 +37,30 @@ const SCENARIOS = {
       http_code: 400
     }
   },
+  forbidden: {
+    title: "Forbidden (403)",
+    delayMs: 500,
+    status: 403,
+    body: { error: "Forbidden", error_code: 403, error_tag: "FORBIDDEN", http_code: 403 }
+  },
+  rateLimited: { title: "Rate limited (429)", delayMs: 500, ...RATE_LIMITED },
   serverError: { title: "Server error (500), empty body", delayMs: 500, status: 500, body: null },
+  badGateway: { title: "Bad gateway (502), plain-text body", delayMs: 500, status: 502, body: "502 Bad Gateway" },
+  partialFailure: {
+    title: "Every 2nd request rate limited (429)",
+    delayMs: 500,
+    status: 200,
+    body: { id: "mock-task" },
+    failEvery: 2,
+    failure: RATE_LIMITED
+  },
   timeout: { title: "No response (timeout)", hang: true },
   offline: { title: "Offline", delayMs: 200, networkError: true }
 };
 
 const DEFAULT_SCENARIO = "success";
+
+let requestCount = 0;
 
 export async function createMenus(selected = DEFAULT_SCENARIO) {
   await browser.contextMenus.remove(PARENT_MENU_ID).catch(() => {});
@@ -67,10 +96,12 @@ export async function handleMenuClick(info) {
   }
 
   await browser.storage.session.set({ [STORAGE_KEY]: id.slice(MENU_PREFIX.length) });
+  requestCount = 0;
   return true;
 }
 
 export async function mockFetch(url, options = {}) {
+  const requestNumber = ++requestCount;
   const key = await getScenario();
   const scenario = SCENARIOS[key];
 
@@ -82,9 +113,20 @@ export async function mockFetch(url, options = {}) {
     throw new TypeError("NetworkError when attempting to fetch resource.");
   }
 
-  const body = scenario.body === null ? null : JSON.stringify(scenario.body);
+  const response = scenario.failEvery && requestNumber % scenario.failEvery === 0
+    ? scenario.failure
+    : scenario;
+
+  if (typeof response.body === "string") {
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "Content-Type": "text/plain" }
+    });
+  }
+
+  const body = response.body === null ? null : JSON.stringify(response.body);
   return new Response(body, {
-    status: scenario.status,
+    status: response.status,
     headers: { "Content-Type": "application/json" }
   });
 }
